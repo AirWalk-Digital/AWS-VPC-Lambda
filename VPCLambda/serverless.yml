@@ -1,0 +1,29 @@
+
+service: vpclambda
+frameworkVersion: '2'
+
+provider:
+  name: aws
+  runtime: python3.8
+  stage: ${opt:stage}
+  region: ${opt:region, 'eu-west-1'}
+
+functions:
+  Demo:
+    role: DemoLambdaRole
+    handler: handler.write_to_bucket
+    timeout: 5
+    environment:
+      BUCKET_NAME: !Ref ResultsBucket
+    events:
+      - schedule: rate(5 minutes)
+    vpc:
+      securityGroupIds:
+        - !Ref DemoLambdaSG
+      subnetIds:
+        - !Ref PrivateSubnetA
+        - !Ref PrivateSubnetB
+
+resources:
+  - Resources:
+  - ${file(resources/infrastructure.yml)}

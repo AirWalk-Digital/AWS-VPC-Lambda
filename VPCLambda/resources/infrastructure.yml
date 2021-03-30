@@ -1,0 +1,197 @@
+Resources:
+  DemoLambdaRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Policies:
+        - PolicyName: DemoLambda
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: 
+                  - 's3:PutObject'
+                Resource: !GetAtt ResultsBucket.Arn
+              - Effect: Allow
+                Action: 
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/vpclambda-*:*'
+              - Effect: Allow
+                Action:
+                  - 'logs:PutLogEvents'
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/vpclambda-*:*:*'
+              - Effect: Allow
+                Action:
+                  - "ec2:CreateNetworkInterface"
+                  - "ec2:DescribeNetworkInterfaces"
+                  - "ec2:DeleteNetworkInterface"
+                  - "ec2:AssignPrivateIpAddresses"
+                  - "ec2:UnassignPrivateIpAddresses"
+                Resource: '*'
+  VPCLogsCloudWatch:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - vpc-flow-logs.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Policies:
+        - PolicyName: DemoVPC-FlowLogs-cloudwatchwriter
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: 
+                  - "logs:CreateLogGroup"
+                  - "logs:CreateLogStream"
+                  - "logs:PutLogEvents"
+                  - "logs:DescribeLogGroups"
+                  - "logs:DescribeLogStreams"
+                  - 'logs:CreateLogStream'
+                Resource: 
+                  - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/vpc/DemoVPC-FlowLogsGroup*'
+                  - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/vpc/DemoVPC-FlowLogsGroup*:*'
+                  - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/vpc/DemoVPC-FlowLogsGroup-*:*:*'
+
+  DemoVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.192.0.0/24
+      EnableDnsSupport: 'True'
+      EnableDnsHostnames: 'True'
+  PrivateSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref DemoVPC
+      AvailabilityZone: !Sub "${AWS::Region}a"
+      CidrBlock: 10.192.0.0/26
+      MapPublicIpOnLaunch: false
+  PrivateSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref DemoVPC
+      AvailabilityZone: !Sub "${AWS::Region}b"
+      CidrBlock: 10.192.0.64/26
+      MapPublicIpOnLaunch: false
+  MyFlowLog:
+    Type: AWS::EC2::FlowLog
+    Properties:
+      DeliverLogsPermissionArn: !GetAtt VPCLogsCloudWatch.Arn
+      LogGroupName: /aws/vpc/DemoVPC-FlowLogsGroup
+      ResourceId: !Ref DemoVPC
+      ResourceType: VPC
+      TrafficType: ALL
+  VPCERouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref DemoVPC
+  SubnetARouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Ref: PrivateSubnetA
+      RouteTableId:
+        Ref: VPCERouteTable
+  SubnetBRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Ref: PrivateSubnetB
+      RouteTableId:
+        Ref: VPCERouteTable
+  ResultsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'demo-vpclambda-${AWS::Region}-${AWS::AccountId}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+  S3EndpointSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref DemoVPC
+      GroupDescription: VPCEndpoint SG
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          SourceSecurityGroupId: !Ref DemoLambdaSG
+  S3Endpoint:
+    Type: 'AWS::EC2::VPCEndpoint'
+    Properties:
+      RouteTableIds: 
+        - !Ref VPCERouteTable
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Sub '${DemoLambdaRole.RoleId}:vpclambda${opt:stage}Demo'
+            Action:
+              - 's3:PutObject'
+            Resource: 
+              - !Sub 'arn:aws:s3:::${ResultsBucket}'
+              - !Sub 'arn:aws:s3:::${ResultsBucket}/*'
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.s3'
+      VpcId: !Ref DemoVPC
+      VpcEndpointType: 'Gateway'
+  DemoLambdaSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref DemoVPC
+      GroupDescription: DemoLambda SG
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          DestinationPrefixListId: "pl-6da54004" # Change this if you get an error about PrefixLists
+  ResultsBucketPolicy:
+    Type: 'AWS::S3::BucketPolicy'
+    Properties:
+      Bucket: !Ref ResultsBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Action:
+              - 's3:PutObject'
+            Effect: Allow
+            Resource:
+              - !Sub 'arn:aws:s3:::${ResultsBucket}'
+              - !Sub 'arn:aws:s3:::${ResultsBucket}/*'
+            Principal:
+              AWS: !Sub '${DemoLambdaRole.Arn}'
+            Condition:
+              StringEquals:
+                'aws:SourceVpce':
+                  - !Ref S3Endpoint
+          # - Action: # Enabling this will block access via console
+          #     - 's3:*'
+          #   Effect: Deny
+          #   Resource:
+          #     - !Sub 'arn:aws:s3:::${ResultsBucket}'
+          #     - !Sub 'arn:aws:s3:::${ResultsBucket}/*'
+          #   Principal: '*'
+          #   Condition:
+          #     StringNotEquals:
+          #       'aws:SourceVpce':
+          #         - !Ref S3Endpoint
