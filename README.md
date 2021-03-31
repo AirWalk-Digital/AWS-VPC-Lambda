@@ -52,7 +52,6 @@ serveless remove --stage="dev" -v
 - Enforcing this model/Landing Zone
 
 
-
 ## Known Issues
 
-- If you get an error about PrefixLists, make sure that the [Prefix List](https://eu-west-1.console.aws.amazon.com/vpc/home?region=eu-west-1#ManagedPrefixLists:) for S3, matches this [PrefixListId](VPCLambda/resources/infrastructure.yml#170). 
+- If you get an error about PrefixLists, make sure that the [Prefix List](https://eu-west-1.console.aws.amazon.com/vpc/home?region=eu-west-1#ManagedPrefixLists:) for S3, matches this [PrefixListId](VPCLambda/resources/infrastructure.yml#178). 
