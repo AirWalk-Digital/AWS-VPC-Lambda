@@ -1,6 +1,6 @@
 # AWS VPC Lambda with serverless
 
-This repo is the companion to `Breaking down AWS Lambda’s Shared Responsibility model`.
+This repo is the companion to [Breaking down the AWS Lambda Shared Responsibility model](https://medium.com/airwalk/breaking-down-the-aws-lambda-shared-responsibility-model-cd84f404bb8d).
 
 It creates
 * An Amazon S3 bucket
